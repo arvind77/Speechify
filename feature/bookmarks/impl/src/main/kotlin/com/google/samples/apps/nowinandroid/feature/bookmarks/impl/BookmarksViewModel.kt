@@ -37,6 +37,9 @@ import javax.inject.Inject
 
 data class EditNoteState(val resourceId: String, val currentNote: String)
 
+/** Holds an id and its associated note (may be null) for undo purposes. */
+data class RemovedBookmark(val id: String, val note: String?)
+
 @HiltViewModel
 class BookmarksViewModel @Inject constructor(
     private val userDataRepository: UserDataRepository,
@@ -44,9 +47,15 @@ class BookmarksViewModel @Inject constructor(
 ) : ViewModel() {
 
     var shouldDisplayUndoBookmark by mutableStateOf(false)
-    private var lastRemovedBookmarkId: String? = null
+        private set
+    private var lastRemovedBookmarks: List<RemovedBookmark> = emptyList()
 
     var editingNoteState: EditNoteState? by mutableStateOf(null)
+        private set
+
+    var isSelectionMode by mutableStateOf(false)
+        private set
+    var selectedIds: Set<String> by mutableStateOf(emptySet())
         private set
 
     val feedUiState: StateFlow<NewsFeedUiState> =
@@ -60,9 +69,11 @@ class BookmarksViewModel @Inject constructor(
             )
 
     fun removeFromSavedResources(newsResourceId: String) {
+        val note = (feedUiState.value as? NewsFeedUiState.Success)
+            ?.feed?.find { it.id == newsResourceId }?.bookmarkNote
         viewModelScope.launch {
             shouldDisplayUndoBookmark = true
-            lastRemovedBookmarkId = newsResourceId
+            lastRemovedBookmarks = listOf(RemovedBookmark(newsResourceId, note))
             userDataRepository.setNewsResourceBookmarked(newsResourceId, false)
         }
     }
@@ -75,8 +86,11 @@ class BookmarksViewModel @Inject constructor(
 
     fun undoBookmarkRemoval() {
         viewModelScope.launch {
-            lastRemovedBookmarkId?.let {
-                userDataRepository.setNewsResourceBookmarked(it, true)
+            lastRemovedBookmarks.forEach { removed ->
+                userDataRepository.setNewsResourceBookmarked(removed.id, true)
+                removed.note?.takeIf { it.isNotBlank() }?.let {
+                    userDataRepository.setBookmarkNote(removed.id, it)
+                }
             }
         }
         clearUndoState()
@@ -84,8 +98,10 @@ class BookmarksViewModel @Inject constructor(
 
     fun clearUndoState() {
         shouldDisplayUndoBookmark = false
-        lastRemovedBookmarkId = null
+        lastRemovedBookmarks = emptyList()
     }
+
+    // Note editing
 
     fun startEditNote(resourceId: String, currentNote: String) {
         editingNoteState = EditNoteState(resourceId, currentNote)
@@ -100,5 +116,41 @@ class BookmarksViewModel @Inject constructor(
 
     fun cancelEditNote() {
         editingNoteState = null
+    }
+
+    // Multi-select
+
+    fun enterSelectionMode(initialId: String) {
+        isSelectionMode = true
+        selectedIds = setOf(initialId)
+    }
+
+    fun toggleSelection(id: String) {
+        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+    }
+
+    fun selectAll(allIds: List<String>) {
+        selectedIds = allIds.toSet()
+    }
+
+    fun cancelSelection() {
+        isSelectionMode = false
+        selectedIds = emptySet()
+    }
+
+    fun removeSelectedBookmarks() {
+        val currentFeed = (feedUiState.value as? NewsFeedUiState.Success)?.feed ?: return
+        val removed = currentFeed
+            .filter { it.id in selectedIds }
+            .map { RemovedBookmark(it.id, it.bookmarkNote) }
+        if (removed.isEmpty()) return
+
+        viewModelScope.launch {
+            removed.forEach { userDataRepository.setNewsResourceBookmarked(it.id, false) }
+        }
+        lastRemovedBookmarks = removed
+        shouldDisplayUndoBookmark = true
+        isSelectionMode = false
+        selectedIds = emptySet()
     }
 }
