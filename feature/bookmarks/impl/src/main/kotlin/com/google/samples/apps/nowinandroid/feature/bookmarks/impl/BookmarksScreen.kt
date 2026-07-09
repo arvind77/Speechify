@@ -16,8 +16,10 @@
 
 package com.google.samples.apps.nowinandroid.feature.bookmarks.impl
 
+import android.net.Uri
 import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +40,7 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -48,9 +51,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -60,6 +66,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.samples.apps.nowinandroid.core.analytics.LocalAnalyticsHelper
+import com.google.samples.apps.nowinandroid.core.ui.logNewsResourceOpened
 import com.google.samples.apps.nowinandroid.core.designsystem.component.NiaLoadingWheel
 import com.google.samples.apps.nowinandroid.core.designsystem.component.scrollbar.DraggableScrollbar
 import com.google.samples.apps.nowinandroid.core.designsystem.component.scrollbar.rememberDraggableScroller
@@ -67,13 +75,15 @@ import com.google.samples.apps.nowinandroid.core.designsystem.component.scrollba
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.LocalTintTheme
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.NiaTheme
 import com.google.samples.apps.nowinandroid.core.model.data.UserNewsResource
+import com.google.samples.apps.nowinandroid.core.ui.BookmarkNoteDialog
 import com.google.samples.apps.nowinandroid.core.ui.NewsFeedUiState
 import com.google.samples.apps.nowinandroid.core.ui.NewsFeedUiState.Loading
 import com.google.samples.apps.nowinandroid.core.ui.NewsFeedUiState.Success
+import com.google.samples.apps.nowinandroid.core.ui.NewsResourceCardExpanded
 import com.google.samples.apps.nowinandroid.core.ui.TrackScreenViewEvent
 import com.google.samples.apps.nowinandroid.core.ui.TrackScrollJank
 import com.google.samples.apps.nowinandroid.core.ui.UserNewsResourcePreviewParameterProvider
-import com.google.samples.apps.nowinandroid.core.ui.newsFeed
+import com.google.samples.apps.nowinandroid.core.ui.launchCustomChromeTab
 import com.google.samples.apps.nowinandroid.feature.bookmarks.api.R
 
 @Composable
@@ -94,6 +104,10 @@ internal fun BookmarksScreen(
         shouldDisplayUndoBookmark = viewModel.shouldDisplayUndoBookmark,
         undoBookmarkRemoval = viewModel::undoBookmarkRemoval,
         clearUndoState = viewModel::clearUndoState,
+        editingNoteState = viewModel.editingNoteState,
+        onNoteClick = viewModel::startEditNote,
+        onSaveNote = viewModel::saveNote,
+        onCancelEditNote = viewModel::cancelEditNote,
     )
 }
 
@@ -112,6 +126,10 @@ internal fun BookmarksScreen(
     shouldDisplayUndoBookmark: Boolean = false,
     undoBookmarkRemoval: () -> Unit = {},
     clearUndoState: () -> Unit = {},
+    editingNoteState: EditNoteState? = null,
+    onNoteClick: (String, String) -> Unit = { _, _ -> },
+    onSaveNote: (String, String) -> Unit = { _, _ -> },
+    onCancelEditNote: () -> Unit = {},
 ) {
     val bookmarkRemovedMessage = stringResource(id = R.string.feature_bookmarks_api_removed)
     val undoText = stringResource(id = R.string.feature_bookmarks_api_undo)
@@ -131,6 +149,20 @@ internal fun BookmarksScreen(
         clearUndoState()
     }
 
+    editingNoteState?.let { noteState ->
+        BookmarkNoteDialog(
+            initialNote = noteState.currentNote,
+            onSave = { note ->
+                onSaveNote(noteState.resourceId, note)
+            },
+            onDismiss = onCancelEditNote,
+            isEditMode = true,
+            onDeleteNote = {
+                onSaveNote(noteState.resourceId, "")
+            },
+        )
+    }
+
     when (feedState) {
         Loading -> LoadingState(modifier)
         is Success -> if (feedState.feed.isNotEmpty()) {
@@ -139,6 +171,7 @@ internal fun BookmarksScreen(
                 removeFromBookmarks,
                 onNewsResourceViewed,
                 onTopicClick,
+                onNoteClick,
                 modifier,
             )
         } else {
@@ -166,6 +199,7 @@ private fun BookmarksGrid(
     removeFromBookmarks: (String) -> Unit,
     onNewsResourceViewed: (String) -> Unit,
     onTopicClick: (String) -> Unit,
+    onNoteClick: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scrollableState = rememberLazyStaggeredGridState()
@@ -184,12 +218,51 @@ private fun BookmarksGrid(
                 .fillMaxSize()
                 .testTag("bookmarks:feed"),
         ) {
-            newsFeed(
-                feedState = feedState,
-                onNewsResourcesCheckedChanged = { id, _ -> removeFromBookmarks(id) },
-                onNewsResourceViewed = onNewsResourceViewed,
-                onTopicClick = onTopicClick,
-            )
+            when (feedState) {
+                Loading -> Unit
+                is Success -> {
+                    items(
+                        items = feedState.feed,
+                        key = { it.id },
+                        contentType = { "bookmarkFeedItem" },
+                    ) { userNewsResource ->
+                        val context = LocalContext.current
+                        val analyticsHelper = LocalAnalyticsHelper.current
+                        val backgroundColor = MaterialTheme.colorScheme.background.toArgb()
+
+                        Column(modifier = Modifier.animateItem()) {
+                            NewsResourceCardExpanded(
+                                userNewsResource = userNewsResource,
+                                isBookmarked = userNewsResource.isSaved,
+                                onClick = {
+                                    analyticsHelper.logNewsResourceOpened(
+                                        newsResourceId = userNewsResource.id,
+                                    )
+                                    launchCustomChromeTab(
+                                        context,
+                                        Uri.parse(userNewsResource.url),
+                                        backgroundColor,
+                                    )
+                                    onNewsResourceViewed(userNewsResource.id)
+                                },
+                                hasBeenViewed = userNewsResource.hasBeenViewed,
+                                onToggleBookmark = {
+                                    removeFromBookmarks(userNewsResource.id)
+                                },
+                                onTopicClick = onTopicClick,
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                            )
+                            userNewsResource.bookmarkNote?.let { note ->
+                                NoteRow(
+                                    note = note,
+                                    onClick = { onNoteClick(userNewsResource.id, note) },
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             item(span = StaggeredGridItemSpan.FullLine) {
                 Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.safeDrawing))
             }
@@ -214,6 +287,23 @@ private fun BookmarksGrid(
             ),
         )
     }
+}
+
+@Composable
+private fun NoteRow(
+    note: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = note,
+        style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
@@ -275,6 +365,7 @@ private fun BookmarksGridPreview(
             removeFromBookmarks = {},
             onNewsResourceViewed = {},
             onTopicClick = {},
+            onNoteClick = { _, _ -> },
         )
     }
 }

@@ -65,6 +65,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -102,6 +105,7 @@ import com.google.samples.apps.nowinandroid.core.ui.TrackScreenViewEvent
 import com.google.samples.apps.nowinandroid.core.ui.TrackScrollJank
 import com.google.samples.apps.nowinandroid.core.ui.UserNewsResourcePreviewParameterProvider
 import com.google.samples.apps.nowinandroid.core.ui.launchCustomChromeTab
+import com.google.samples.apps.nowinandroid.core.ui.BookmarkNoteDialog
 import com.google.samples.apps.nowinandroid.core.ui.newsFeed
 import com.google.samples.apps.nowinandroid.feature.foryou.api.R
 
@@ -127,6 +131,7 @@ fun ForYouScreen(
         saveFollowedTopics = viewModel::dismissOnboarding,
         onNewsResourcesCheckedChanged = viewModel::updateNewsResourceSaved,
         onNewsResourceViewed = { viewModel.setNewsResourceViewed(it, true) },
+        onSaveBookmarkNote = viewModel::saveBookmarkNote,
         modifier = modifier,
     )
 }
@@ -143,8 +148,10 @@ internal fun ForYouScreen(
     saveFollowedTopics: () -> Unit,
     onNewsResourcesCheckedChanged: (String, Boolean) -> Unit,
     onNewsResourceViewed: (String) -> Unit,
+    onSaveBookmarkNote: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
+    var pendingBookmarkNoteId by remember { mutableStateOf<String?>(null) }
     val isOnboardingLoading = onboardingUiState is OnboardingUiState.Loading
     val isFeedLoading = feedState is NewsFeedUiState.Loading
 
@@ -192,7 +199,13 @@ internal fun ForYouScreen(
 
             newsFeed(
                 feedState = feedState,
-                onNewsResourcesCheckedChanged = onNewsResourcesCheckedChanged,
+                onNewsResourcesCheckedChanged = { id, isChecked ->
+                    if (isChecked) {
+                        pendingBookmarkNoteId = id
+                    } else {
+                        onNewsResourcesCheckedChanged(id, false)
+                    }
+                },
                 onNewsResourceViewed = onNewsResourceViewed,
                 onTopicClick = onTopicClick,
             )
@@ -242,6 +255,19 @@ internal fun ForYouScreen(
             ),
         )
     }
+    pendingBookmarkNoteId?.let { pendingId ->
+        BookmarkNoteDialog(
+            initialNote = "",
+            onSave = { note ->
+                onNewsResourcesCheckedChanged(pendingId, true)
+                onSaveBookmarkNote(pendingId, note)
+            },
+            onDismiss = {
+                pendingBookmarkNoteId = null
+            },
+        )
+    }
+
     TrackScreenViewEvent(screenName = "ForYou")
     NotificationPermissionEffect()
     DeepLinkEffect(

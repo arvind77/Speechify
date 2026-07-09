@@ -44,6 +44,12 @@ interface UserDataRepository {
     suspend fun setNewsResourceBookmarked(newsResourceId: String, bookmarked: Boolean)
 
     /**
+     * Sets or removes the personal note for a bookmarked news resource.
+     * Passing a blank note removes it.
+     */
+    suspend fun setBookmarkNote(newsResourceId: String, note: String)
+
+    /**
      * Updates the viewed status for a news resource
      */
     suspend fun setNewsResourceViewed(newsResourceId: String, viewed: Boolean)

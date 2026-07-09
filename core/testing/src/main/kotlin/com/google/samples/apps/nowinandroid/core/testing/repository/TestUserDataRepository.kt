@@ -33,6 +33,7 @@ val emptyUserData = UserData(
     darkThemeConfig = DarkThemeConfig.FOLLOW_SYSTEM,
     useDynamicColor = false,
     shouldHideOnboarding = false,
+    bookmarkNotes = emptyMap(),
 )
 
 class TestUserDataRepository : UserDataRepository {
@@ -68,8 +69,24 @@ class TestUserDataRepository : UserDataRepository {
             } else {
                 current.bookmarkedNewsResources - newsResourceId
             }
+            val bookmarkNotes = if (bookmarked) {
+                current.bookmarkNotes
+            } else {
+                current.bookmarkNotes - newsResourceId
+            }
 
-            _userData.tryEmit(current.copy(bookmarkedNewsResources = bookmarkedNews))
+            _userData.tryEmit(current.copy(bookmarkedNewsResources = bookmarkedNews, bookmarkNotes = bookmarkNotes))
+        }
+    }
+
+    override suspend fun setBookmarkNote(newsResourceId: String, note: String) {
+        currentUserData.let { current ->
+            val bookmarkNotes = if (note.isNotBlank()) {
+                current.bookmarkNotes + (newsResourceId to note)
+            } else {
+                current.bookmarkNotes - newsResourceId
+            }
+            _userData.tryEmit(current.copy(bookmarkNotes = bookmarkNotes))
         }
     }
 

@@ -52,7 +52,9 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -87,6 +89,7 @@ import com.google.samples.apps.nowinandroid.core.designsystem.icon.NiaIcons
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.NiaTheme
 import com.google.samples.apps.nowinandroid.core.model.data.FollowableTopic
 import com.google.samples.apps.nowinandroid.core.model.data.UserNewsResource
+import com.google.samples.apps.nowinandroid.core.ui.BookmarkNoteDialog
 import com.google.samples.apps.nowinandroid.core.ui.DevicePreviews
 import com.google.samples.apps.nowinandroid.core.ui.InterestsItem
 import com.google.samples.apps.nowinandroid.core.ui.NewsFeedUiState.Success
@@ -120,6 +123,7 @@ internal fun SearchScreen(
         onBackClick = onBackClick,
         onInterestsClick = onInterestsClick,
         onTopicClick = onTopicClick,
+        onSaveBookmarkNote = searchViewModel::saveBookmarkNote,
     )
 }
 
@@ -138,7 +142,23 @@ internal fun SearchScreen(
     onBackClick: () -> Unit = {},
     onInterestsClick: () -> Unit = {},
     onTopicClick: (String) -> Unit = {},
+    onSaveBookmarkNote: (String, String) -> Unit = { _, _ -> },
 ) {
+    var pendingBookmarkNoteId by remember { mutableStateOf<String?>(null) }
+
+    pendingBookmarkNoteId?.let { pendingId ->
+        BookmarkNoteDialog(
+            initialNote = "",
+            onSave = { note ->
+                onNewsResourcesCheckedChanged(pendingId, true)
+                onSaveBookmarkNote(pendingId, note)
+            },
+            onDismiss = {
+                pendingBookmarkNoteId = null
+            },
+        )
+    }
+
     TrackScreenViewEvent(screenName = "Search")
     Column(modifier = modifier) {
         Spacer(Modifier.windowInsetsTopHeight(WindowInsets.safeDrawing))
@@ -191,7 +211,13 @@ internal fun SearchScreen(
                         newsResources = searchResultUiState.newsResources,
                         onSearchTriggered = onSearchTriggered,
                         onTopicClick = onTopicClick,
-                        onNewsResourcesCheckedChanged = onNewsResourcesCheckedChanged,
+                        onNewsResourcesCheckedChanged = { id, isChecked ->
+                            if (isChecked) {
+                                pendingBookmarkNoteId = id
+                            } else {
+                                onNewsResourcesCheckedChanged(id, false)
+                            }
+                        },
                         onNewsResourceViewed = onNewsResourceViewed,
                         onFollowButtonClick = onFollowButtonClick,
                     )

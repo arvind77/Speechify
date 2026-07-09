@@ -113,6 +113,49 @@ class BookmarksViewModelTest {
     }
 
     @Test
+    fun saveNote_setsNoteOnBookmarkedResource() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher()) { viewModel.feedUiState.collect() }
+
+        newsRepository.sendNewsResources(newsResourcesTestData)
+        userDataRepository.setNewsResourceBookmarked(newsResourcesTestData[0].id, true)
+        viewModel.saveNote(newsResourcesTestData[0].id, "My note")
+
+        val item = viewModel.feedUiState.value
+        assertIs<Success>(item)
+        assertEquals("My note", item.feed.first().bookmarkNote)
+    }
+
+    @Test
+    fun saveNote_emptyString_deletesNote() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher()) { viewModel.feedUiState.collect() }
+
+        newsRepository.sendNewsResources(newsResourcesTestData)
+        userDataRepository.setNewsResourceBookmarked(newsResourcesTestData[0].id, true)
+        viewModel.saveNote(newsResourcesTestData[0].id, "My note")
+        viewModel.saveNote(newsResourcesTestData[0].id, "")
+
+        val item = viewModel.feedUiState.value
+        assertIs<Success>(item)
+        assertEquals(null, item.feed.first().bookmarkNote)
+    }
+
+    @Test
+    fun removeFromSaved_deletesNote() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher()) { viewModel.feedUiState.collect() }
+
+        newsRepository.sendNewsResources(newsResourcesTestData)
+        userDataRepository.setNewsResourceBookmarked(newsResourcesTestData[0].id, true)
+        viewModel.saveNote(newsResourcesTestData[0].id, "My note")
+        viewModel.removeFromSavedResources(newsResourcesTestData[0].id)
+        // Undo removal to restore the bookmark and verify note is gone
+        viewModel.undoBookmarkRemoval()
+
+        val item = viewModel.feedUiState.value
+        assertIs<Success>(item)
+        assertEquals(null, item.feed.first().bookmarkNote)
+    }
+
+    @Test
     fun feedUiState_undoneBookmarkRemoval_bookmarkIsRestored() = runTest {
         backgroundScope.launch(UnconfinedTestDispatcher()) { viewModel.feedUiState.collect() }
 

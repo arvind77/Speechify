@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class EditNoteState(val resourceId: String, val currentNote: String)
+
 @HiltViewModel
 class BookmarksViewModel @Inject constructor(
     private val userDataRepository: UserDataRepository,
@@ -43,6 +45,9 @@ class BookmarksViewModel @Inject constructor(
 
     var shouldDisplayUndoBookmark by mutableStateOf(false)
     private var lastRemovedBookmarkId: String? = null
+
+    var editingNoteState: EditNoteState? by mutableStateOf(null)
+        private set
 
     val feedUiState: StateFlow<NewsFeedUiState> =
         userNewsResourceRepository.observeAllBookmarked()
@@ -80,5 +85,20 @@ class BookmarksViewModel @Inject constructor(
     fun clearUndoState() {
         shouldDisplayUndoBookmark = false
         lastRemovedBookmarkId = null
+    }
+
+    fun startEditNote(resourceId: String, currentNote: String) {
+        editingNoteState = EditNoteState(resourceId, currentNote)
+    }
+
+    fun saveNote(resourceId: String, note: String) {
+        viewModelScope.launch {
+            userDataRepository.setBookmarkNote(resourceId, note)
+        }
+        editingNoteState = null
+    }
+
+    fun cancelEditNote() {
+        editingNoteState = null
     }
 }

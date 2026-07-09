@@ -53,6 +53,9 @@ internal class OfflineFirstUserDataRepository @Inject constructor(
     override suspend fun setNewsResourceViewed(newsResourceId: String, viewed: Boolean) =
         niaPreferencesDataSource.setNewsResourceViewed(newsResourceId, viewed)
 
+    override suspend fun setBookmarkNote(newsResourceId: String, note: String) =
+        niaPreferencesDataSource.setBookmarkNote(newsResourceId, note)
+
     override suspend fun setThemeBrand(themeBrand: ThemeBrand) {
         niaPreferencesDataSource.setThemeBrand(themeBrand)
         analyticsHelper.logThemeChanged(themeBrand.name)

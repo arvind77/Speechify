@@ -43,6 +43,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -63,6 +66,7 @@ import com.google.samples.apps.nowinandroid.core.designsystem.icon.NiaIcons
 import com.google.samples.apps.nowinandroid.core.designsystem.theme.NiaTheme
 import com.google.samples.apps.nowinandroid.core.model.data.FollowableTopic
 import com.google.samples.apps.nowinandroid.core.model.data.UserNewsResource
+import com.google.samples.apps.nowinandroid.core.ui.BookmarkNoteDialog
 import com.google.samples.apps.nowinandroid.core.ui.DevicePreviews
 import com.google.samples.apps.nowinandroid.core.ui.TrackScreenViewEvent
 import com.google.samples.apps.nowinandroid.core.ui.TrackScrollJank
@@ -93,6 +97,7 @@ fun TopicScreen(
         onBookmarkChanged = viewModel::bookmarkNews,
         onNewsResourceViewed = { viewModel.setNewsResourceViewed(it, true) },
         onTopicClick = onTopicClick,
+        onSaveBookmarkNote = viewModel::saveBookmarkNote,
     )
 }
 
@@ -107,8 +112,24 @@ internal fun TopicScreen(
     onTopicClick: (String) -> Unit,
     onBookmarkChanged: (String, Boolean) -> Unit,
     onNewsResourceViewed: (String) -> Unit,
+    onSaveBookmarkNote: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
+    var pendingBookmarkNoteId by remember { mutableStateOf<String?>(null) }
+
+    pendingBookmarkNoteId?.let { pendingId ->
+        BookmarkNoteDialog(
+            initialNote = "",
+            onSave = { note ->
+                onBookmarkChanged(pendingId, true)
+                onSaveBookmarkNote(pendingId, note)
+            },
+            onDismiss = {
+                pendingBookmarkNoteId = null
+            },
+        )
+    }
+
     val state = rememberLazyListState()
     TrackScrollJank(scrollableState = state, stateName = "topic:screen")
     Box(
@@ -144,7 +165,13 @@ internal fun TopicScreen(
                         description = topicUiState.followableTopic.topic.longDescription,
                         news = newsUiState,
                         imageUrl = topicUiState.followableTopic.topic.imageUrl,
-                        onBookmarkChanged = onBookmarkChanged,
+                        onBookmarkChanged = { id, bookmarked ->
+                            if (bookmarked) {
+                                pendingBookmarkNoteId = id
+                            } else {
+                                onBookmarkChanged(id, false)
+                            }
+                        },
                         onNewsResourceViewed = onNewsResourceViewed,
                         onTopicClick = onTopicClick,
                     )

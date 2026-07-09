@@ -121,6 +121,12 @@ class ForYouViewModel @Inject constructor(
         }
     }
 
+    fun saveBookmarkNote(newsResourceId: String, note: String) {
+        viewModelScope.launch {
+            userDataRepository.setBookmarkNote(newsResourceId, note)
+        }
+    }
+
     fun setNewsResourceViewed(newsResourceId: String, viewed: Boolean) {
         viewModelScope.launch {
             userDataRepository.setNewsResourceViewed(newsResourceId, viewed)
