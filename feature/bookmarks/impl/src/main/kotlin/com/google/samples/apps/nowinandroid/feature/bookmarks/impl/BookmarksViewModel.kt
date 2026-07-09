@@ -37,7 +37,7 @@ import javax.inject.Inject
 
 data class EditNoteState(val resourceId: String, val currentNote: String)
 
-/** Holds an id and its associated note (may be null) for undo purposes. */
+/** Holds an id and its note for undo purposes. */
 data class RemovedBookmark(val id: String, val note: String?)
 
 @HiltViewModel
@@ -53,8 +53,7 @@ class BookmarksViewModel @Inject constructor(
     var editingNoteState: EditNoteState? by mutableStateOf(null)
         private set
 
-    var isSelectionMode by mutableStateOf(false)
-        private set
+    /** IDs of cards currently checked by the user. */
     var selectedIds: Set<String> by mutableStateOf(emptySet())
         private set
 
@@ -76,6 +75,7 @@ class BookmarksViewModel @Inject constructor(
             lastRemovedBookmarks = listOf(RemovedBookmark(newsResourceId, note))
             userDataRepository.setNewsResourceBookmarked(newsResourceId, false)
         }
+        selectedIds = selectedIds - newsResourceId
     }
 
     fun setNewsResourceViewed(newsResourceId: String, viewed: Boolean) {
@@ -118,12 +118,7 @@ class BookmarksViewModel @Inject constructor(
         editingNoteState = null
     }
 
-    // Multi-select
-
-    fun enterSelectionMode(initialId: String) {
-        isSelectionMode = true
-        selectedIds = setOf(initialId)
-    }
+    // Checkbox selection
 
     fun toggleSelection(id: String) {
         selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
@@ -133,8 +128,7 @@ class BookmarksViewModel @Inject constructor(
         selectedIds = allIds.toSet()
     }
 
-    fun cancelSelection() {
-        isSelectionMode = false
+    fun clearSelection() {
         selectedIds = emptySet()
     }
 
@@ -150,7 +144,6 @@ class BookmarksViewModel @Inject constructor(
         }
         lastRemovedBookmarks = removed
         shouldDisplayUndoBookmark = true
-        isSelectionMode = false
         selectedIds = emptySet()
     }
 }

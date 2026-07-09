@@ -184,35 +184,9 @@ class BookmarksViewModelTest {
     // --- Multi-select tests ---
 
     @Test
-    fun enterSelectionMode_setsInitialSelection() = runTest {
-        backgroundScope.launch(UnconfinedTestDispatcher()) { viewModel.feedUiState.collect() }
-
-        newsRepository.sendNewsResources(newsResourcesTestData)
-        userDataRepository.setNewsResourceBookmarked(newsResourcesTestData[0].id, true)
-
-        viewModel.enterSelectionMode(newsResourcesTestData[0].id)
-
-        assertTrue(viewModel.isSelectionMode)
-        assertEquals(setOf(newsResourcesTestData[0].id), viewModel.selectedIds)
-    }
-
-    @Test
-    fun cancelSelection_exitsSelectionMode() = runTest {
-        viewModel.enterSelectionMode(newsResourcesTestData[0].id)
-        viewModel.cancelSelection()
-
-        assertFalse(viewModel.isSelectionMode)
-        assertTrue(viewModel.selectedIds.isEmpty())
-    }
-
-    @Test
-    fun toggleSelection_addsAndRemovesIds() = runTest {
-        viewModel.enterSelectionMode(newsResourcesTestData[0].id)
-        viewModel.toggleSelection(newsResourcesTestData[1].id)
-        assertEquals(setOf(newsResourcesTestData[0].id, newsResourcesTestData[1].id), viewModel.selectedIds)
-
+    fun toggleSelection_addsId() = runTest {
         viewModel.toggleSelection(newsResourcesTestData[0].id)
-        assertEquals(setOf(newsResourcesTestData[1].id), viewModel.selectedIds)
+        assertEquals(setOf(newsResourcesTestData[0].id), viewModel.selectedIds)
     }
 
     @Test
@@ -223,6 +197,24 @@ class BookmarksViewModelTest {
     }
 
     @Test
+    fun clearSelection_emptiesSelectedIds() = runTest {
+        viewModel.toggleSelection(newsResourcesTestData[0].id)
+        viewModel.toggleSelection(newsResourcesTestData[1].id)
+        viewModel.clearSelection()
+        assertTrue(viewModel.selectedIds.isEmpty())
+    }
+
+    @Test
+    fun toggleSelection_addsAndRemovesIds() = runTest {
+        viewModel.toggleSelection(newsResourcesTestData[0].id)
+        viewModel.toggleSelection(newsResourcesTestData[1].id)
+        assertEquals(setOf(newsResourcesTestData[0].id, newsResourcesTestData[1].id), viewModel.selectedIds)
+
+        viewModel.toggleSelection(newsResourcesTestData[0].id)
+        assertEquals(setOf(newsResourcesTestData[1].id), viewModel.selectedIds)
+    }
+
+    @Test
     fun removeSelectedBookmarks_removesAllSelected() = runTest {
         backgroundScope.launch(UnconfinedTestDispatcher()) { viewModel.feedUiState.collect() }
 
@@ -230,14 +222,14 @@ class BookmarksViewModelTest {
         userDataRepository.setNewsResourceBookmarked(newsResourcesTestData[0].id, true)
         userDataRepository.setNewsResourceBookmarked(newsResourcesTestData[1].id, true)
 
-        viewModel.enterSelectionMode(newsResourcesTestData[0].id)
+        viewModel.toggleSelection(newsResourcesTestData[0].id)
         viewModel.toggleSelection(newsResourcesTestData[1].id)
         viewModel.removeSelectedBookmarks()
 
         val item = viewModel.feedUiState.value
         assertIs<Success>(item)
         assertEquals(0, item.feed.size)
-        assertFalse(viewModel.isSelectionMode)
+        assertTrue(viewModel.selectedIds.isEmpty())
         assertTrue(viewModel.shouldDisplayUndoBookmark)
     }
 
@@ -249,7 +241,7 @@ class BookmarksViewModelTest {
         userDataRepository.setNewsResourceBookmarked(newsResourcesTestData[0].id, true)
         userDataRepository.setNewsResourceBookmarked(newsResourcesTestData[1].id, true)
 
-        viewModel.enterSelectionMode(newsResourcesTestData[0].id)
+        viewModel.toggleSelection(newsResourcesTestData[0].id)
         viewModel.toggleSelection(newsResourcesTestData[1].id)
         viewModel.removeSelectedBookmarks()
         viewModel.undoBookmarkRemoval()
@@ -268,7 +260,7 @@ class BookmarksViewModelTest {
         userDataRepository.setNewsResourceBookmarked(newsResourcesTestData[0].id, true)
         viewModel.saveNote(newsResourcesTestData[0].id, "A note")
 
-        viewModel.enterSelectionMode(newsResourcesTestData[0].id)
+        viewModel.toggleSelection(newsResourcesTestData[0].id)
         viewModel.removeSelectedBookmarks()
         viewModel.undoBookmarkRemoval()
 
